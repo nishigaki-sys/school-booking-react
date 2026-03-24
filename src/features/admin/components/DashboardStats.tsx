@@ -42,31 +42,53 @@ function getColorForId(str: string) {
 
 export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
   const { bookings } = useBookings(schoolId);
-  const { logs } = useLogs(schoolId);
+  // useLogsが存在しない、または空配列を返す場合の安全策としてデフォルトをフォールバックします
+  const logsData = useLogs ? useLogs(schoolId) : { logs: [] };
+  const logs = logsData.logs || [];
 
-  const [draftDate, setDraftDate] = useState({
-    start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-    end: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]
+  const [periodMode, setPeriodMode] = useState<'month' | 'custom'>('month');
+  const [targetMonth, setTargetMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
-  const [appliedDate, setAppliedDate] = useState({ ...draftDate });
+
+  // 期間指定の入力用状態（開始日を「本日」に設定）
+  const [draftDate, setDraftDate] = useState(() => {
+    const now = new Date();
+    // タイムゾーンのズレを考慮してローカルの年月日を取得
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    
+    return {
+      start: `${y}-${m}-${d}`, // 本日
+      end: new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0] // 当月末
+    };
+  });
+
+  // 現在適用されている集計期間
+  // デフォルトは「月間（当月）」のため、月初め〜月末にする
+  const [appliedDate, setAppliedDate] = useState(() => {
+    const now = new Date();
+    return {
+      start: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0],
+      end: new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]
+    };
+  });
+
+  // 月変更時の自動適用
+  const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setTargetMonth(val);
+    if (val) {
+      const [y, m] = val.split('-');
+      const start = new Date(Number(y), Number(m) - 1, 1).toISOString().split('T')[0];
+      const end = new Date(Number(y), Number(m), 0).toISOString().split('T')[0];
+      setAppliedDate({ start, end });
+    }
+  };
   
   const [trendMode, setTrendMode] = useState<'created' | 'event'>('event');
-
-  // --- トップサマリー用データの計算 ---
-  const topSummary = useMemo(() => {
-    const totalCount = bookings.length;
-    const now = new Date();
-    const thisMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const thisMonthBookings = bookings.filter(b => b.date.startsWith(thisMonthPrefix));
-    
-    let thisMonthSales = 0;
-    thisMonthBookings.forEach(b => {
-      const content = settings?.contents?.find((c: any) => c.id === b.contentId);
-      if (content) thisMonthSales += Number(content.price || 0);
-    });
-
-    return { totalCount, thisMonthCount: thisMonthBookings.length, thisMonthSales };
-  }, [bookings, settings]);
 
   // --- 指定期間内の統計データ計算 ---
   const stats = useMemo(() => {
@@ -74,9 +96,17 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
     const eDate = appliedDate.end;
     const datesInPeriod = getDateList(sDate, eDate);
 
-    // 1. 期間指定集計
-    const periodBookings = bookings.filter(b => b.date >= sDate && b.date <= eDate);
-    
+    // 1. KPI & 期間指定集計
+    // 参加ベース（予約人数）
+    const joinedBookings = bookings.filter(b => b.date >= sDate && b.date <= eDate);
+    // 受付ベース（申込件数）
+    const createdBookings = bookings.filter(b => {
+      if (!b.createdAt) return false;
+      const d = b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt.seconds * 1000);
+      const dateStr = d.toISOString().split('T')[0];
+      return dateStr >= sDate && dateStr <= eDate;
+    });
+
     let periodCapacity = 0;
     datesInPeriod.forEach(dStr => {
       settings?.schedule?.[dStr]?.forEach((evt: any) => {
@@ -84,7 +114,14 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
       });
     });
     
-    const periodRate = periodCapacity > 0 ? Math.round((periodBookings.length / periodCapacity) * 100) : 0;
+    const periodRate = periodCapacity > 0 ? Math.round((joinedBookings.length / periodCapacity) * 100) : 0;
+
+    // 売上金額（参加ベースでの売上実績）
+    let totalSales = 0;
+    joinedBookings.forEach(b => {
+      const content = settings?.contents?.find((c: any) => c.id === b.contentId);
+      if (content) totalSales += Number(content.price || 0);
+    });
 
     // 2. 予約実績推移
     const contentTrendMap: any = {};
@@ -133,29 +170,33 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
         contentStatsMap[cid].capacity += parseInt(evt.capacity || 0);
       });
     });
-    periodBookings.forEach(b => {
+    joinedBookings.forEach(b => {
       const cid = contentStatsMap[b.contentId] ? b.contentId : 'unknown';
       contentStatsMap[cid].booking++;
     });
 
-    // 4. 下部表示用（流入元、ファネル）
+    // 4. 下部表示用（流入元、ファネル）※申込件数（受付ベース）
     const sourceCounts: any = {};
-    periodBookings.forEach(b => {
+    createdBookings.forEach(b => {
       let label = b.sourceType === 'admin' ? '管理画面' : (b.utmSource || '直接/検索');
       sourceCounts[label] = (sourceCounts[label] || 0) + 1;
     });
 
     const funnel = { page_view: 0, grade_selection: 0, date_click: 0, content_selection: 0, form_input: 0, conversion: 0 };
-    logs.forEach(log => {
-      if (!log.timestamp || log.schoolId !== schoolId) return;
-      const logDate = log.timestamp.toDate().toISOString().split('T')[0];
-      if (logDate >= sDate && logDate <= eDate && funnel[log.event as keyof typeof funnel] !== undefined) {
-        funnel[log.event as keyof typeof funnel]++;
-      }
-    });
+    if (Array.isArray(logs)) {
+      logs.forEach(log => {
+        if (!log.timestamp || log.schoolId !== schoolId) return;
+        const logDate = log.timestamp.toDate().toISOString().split('T')[0];
+        if (logDate >= sDate && logDate <= eDate && funnel[log.event as keyof typeof funnel] !== undefined) {
+          funnel[log.event as keyof typeof funnel]++;
+        }
+      });
+    }
 
     return {
-      periodBookingCount: periodBookings.length,
+      joinedCount: joinedBookings.length,
+      createdCount: createdBookings.length,
+      totalSales,
       periodCapacity,
       periodRate,
       trendLabels: datesInPeriod.map(d => d.substring(5).replace('-', '/')),
@@ -180,7 +221,7 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
   const funnelChartData = {
     labels: ['ページPV', '学年選択', '日程クリック', 'コンテンツ選択', 'フォーム入力', '申込完了'],
     datasets: [{
-      label: 'アクセス数', // ツールチップ用
+      label: 'アクセス数',
       data: [
         stats.funnel.page_view,
         stats.funnel.grade_selection,
@@ -198,63 +239,125 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
   return (
     <div className="space-y-6 bg-slate-50 min-h-screen font-sans">
       
-      {/* トップサマリー */}
+      {/* 期間指定UI */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <span className="text-sm font-bold text-slate-700">集計期間:</span>
+        <div className="flex bg-slate-100 p-1 rounded-md text-xs font-bold border border-slate-200">
+          <button 
+            onClick={() => {
+              setPeriodMode('month');
+              const [y, m] = targetMonth.split('-');
+              if(y && m) {
+                const start = new Date(Number(y), Number(m) - 1, 1).toISOString().split('T')[0];
+                const end = new Date(Number(y), Number(m), 0).toISOString().split('T')[0];
+                setAppliedDate({ start, end });
+              }
+            }}
+            className={`px-4 py-1.5 rounded transition-colors ${periodMode === 'month' ? 'bg-white border border-slate-300 shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            月間
+          </button>
+          <button 
+            onClick={() => setPeriodMode('custom')}
+            className={`px-4 py-1.5 rounded transition-colors ${periodMode === 'custom' ? 'bg-white border border-slate-300 shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            期間指定
+          </button>
+        </div>
+
+        {periodMode === 'month' ? (
+          <input 
+            type="month" 
+            value={targetMonth} 
+            onChange={handleMonthChange} 
+            className="p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-800 outline-none" 
+          />
+        ) : (
+          <div className="flex items-center gap-2">
+            <input type="date" value={draftDate.start} onChange={e => setDraftDate({...draftDate, start: e.target.value})} className="p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-800 outline-none" />
+            <span className="text-slate-500 font-bold">〜</span>
+            <input type="date" value={draftDate.end} onChange={e => setDraftDate({...draftDate, end: e.target.value})} className="p-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-800 outline-none" />
+            <button 
+              onClick={() => setAppliedDate(draftDate)}
+              className="bg-slate-700 text-white font-bold text-sm px-5 py-2 rounded-lg hover:bg-slate-800 transition"
+            >
+              集計
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* トップKPIカード */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-xs font-bold text-slate-500 mb-2">現在の予約総数</p>
-          <p className="text-4xl font-black text-slate-800">{topSummary.totalCount}</p>
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+          <p className="text-xs font-bold text-slate-500 mb-2">予約人数（参加）</p>
+          <p className="text-4xl font-black text-blue-600">{stats.joinedCount}</p>
         </div>
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-xs font-bold text-slate-500 mb-2">今月の予約</p>
-          <p className="text-4xl font-black text-blue-600">{topSummary.thisMonthCount}</p>
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+          <p className="text-xs font-bold text-slate-500 mb-2">申込件数（受付）</p>
+          <p className="text-4xl font-black text-slate-800">{stats.createdCount}</p>
         </div>
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-xs font-bold text-slate-500 mb-2">今月の売上金額</p>
-          <p className="text-4xl font-black text-slate-800">¥{topSummary.thisMonthSales.toLocaleString()}</p>
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+          <p className="text-xs font-bold text-slate-500 mb-2">売上金額</p>
+          <p className="text-4xl font-black text-slate-800">¥{stats.totalSales.toLocaleString()}</p>
         </div>
       </div>
 
       {/* 期間集計 ＆ 推移グラフ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* 左側：定員と予約率（参加ベース） */}
         <div className="lg:col-span-1 bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col">
           <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-            期間指定集計
+            定員と予約率
           </h3>
-          
-          <div className="flex items-end gap-2 mb-8">
-            <div className="flex-1">
-              <label className="block text-xs font-bold text-slate-500 mb-1">開始日</label>
-              <input type="date" value={draftDate.start} onChange={e => setDraftDate({...draftDate, start: e.target.value})} className="w-full p-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-slate-800 outline-none" />
-            </div>
-            <div className="flex-1">
-              <label className="block text-xs font-bold text-slate-500 mb-1">終了日</label>
-              <input type="date" value={draftDate.end} onChange={e => setDraftDate({...draftDate, end: e.target.value})} className="w-full p-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-slate-800 outline-none" />
-            </div>
-            <button 
-              onClick={() => setAppliedDate(draftDate)}
-              className="bg-slate-700 text-white font-bold text-sm px-4 py-2 h-[38px] rounded hover:bg-slate-800 transition"
-            >
-              集計
-            </button>
-          </div>
 
-          <div className="flex justify-between border border-slate-100 bg-slate-50 rounded-lg p-6 mt-auto">
+          {/* 充足率（ドーナツグラフ） */}
+          <div className="flex-1 relative flex items-center justify-center min-h-[160px] mb-4">
+            <Doughnut
+              data={{
+                labels: ['予約人数', '空き枠'],
+                datasets: [{
+                  data: [
+                    stats.joinedCount, 
+                    Math.max(0, stats.periodCapacity - stats.joinedCount)
+                  ],
+                  backgroundColor: ['#3b82f6', '#f1f5f9'],
+                  borderWidth: 0,
+                  cutout: '75%'
+                }]
+              }}
+              options={{
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      label: (context: any) => ` ${context.label}: ${context.raw}人`
+                    }
+                  }
+                }
+              }}
+            />
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-3xl font-black text-blue-600">{stats.periodRate}%</span>
+              <span className="text-[10px] font-bold text-slate-400">充足率</span>
+            </div>
+          </div>
+          
+          <div className="flex justify-between border border-slate-100 bg-slate-50 rounded-lg p-4 mt-auto">
             <div className="text-center">
-              <p className="text-xs font-bold text-slate-500 mb-1">予約数</p>
-              <p className="text-2xl font-black text-slate-800">{stats.periodBookingCount}</p>
+              <p className="text-xs font-bold text-slate-500 mb-1">予約人数</p>
+              <p className="text-xl font-black text-slate-800">{stats.joinedCount}</p>
             </div>
             <div className="text-center">
               <p className="text-xs font-bold text-slate-500 mb-1">総枠数</p>
-              <p className="text-2xl font-black text-slate-800">{stats.periodCapacity}</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xs font-bold text-slate-500 mb-1">予約率</p>
-              <p className="text-2xl font-black text-blue-600">{stats.periodRate}%</p>
+              <p className="text-xl font-black text-slate-800">{stats.periodCapacity}</p>
             </div>
           </div>
         </div>
 
+        {/* 右側：予約実績推移 */}
         <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm p-6">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-sm font-bold text-slate-700">予約実績推移 (積み上げ)</h3>
@@ -263,13 +366,13 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
                 onClick={() => setTrendMode('created')}
                 className={`px-3 py-1 rounded transition-colors ${trendMode === 'created' ? 'bg-white border border-slate-300 shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                受付日
+                申込件数 (受付日)
               </button>
               <button 
                 onClick={() => setTrendMode('event')}
                 className={`px-3 py-1 rounded transition-colors ${trendMode === 'event' ? 'bg-white border border-slate-300 shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                参加日
+                予約人数 (参加日)
               </button>
             </div>
           </div>
@@ -290,27 +393,38 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
         </div>
       </div>
 
-      {/* コンテンツ別 予実管理 */}
+      {/* コンテンツ別 予実管理 (積み上げ棒グラフ) */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
         <h3 className="text-sm font-bold text-slate-700 mb-6 flex items-center gap-2">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-          コンテンツ別 予実管理 (総枠数 vs 予約数) <span className="text-xs text-slate-400 font-normal ml-2">※指定期間内の開催分を集計</span>
+          コンテンツ別 予実管理 (総枠数 vs 予約人数) <span className="text-xs text-slate-400 font-normal ml-2">※指定期間内の開催分を集計</span>
         </h3>
         <div className="h-[300px]">
           <Bar 
             data={{
               labels: stats.contentStats.map((s: any) => s.name),
               datasets: [
-                { label: '予約数', data: stats.contentStats.map((s: any) => s.booking), backgroundColor: '#ea580c', barPercentage: 0.6 },
-                { label: '総枠数(定員)', data: stats.contentStats.map((s: any) => s.capacity), backgroundColor: '#cbd5e1', barPercentage: 0.6 }
+                { 
+                  label: '予約人数', 
+                  data: stats.contentStats.map((s: any) => s.booking), 
+                  backgroundColor: '#ea580c', 
+                  barPercentage: 0.6 
+                },
+                { 
+                  label: '空き枠', 
+                  // 全体の高さが総枠数（capacity）になるように、空き枠を計算して積み上げる
+                  data: stats.contentStats.map((s: any) => Math.max(0, s.capacity - s.booking)), 
+                  backgroundColor: '#cbd5e1', 
+                  barPercentage: 0.6 
+                }
               ]
             }} 
             options={{ 
               maintainAspectRatio: false,
               plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { weight: 'bold' } } } },
               scales: {
-                y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } },
-                x: { grid: { display: false }, ticks: { font: { weight: 'bold' } } }
+                x: { stacked: true, grid: { display: false }, ticks: { font: { weight: 'bold' } } },
+                y: { stacked: true, beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } }
               }
             }} 
           />
@@ -321,7 +435,7 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
       <div className="mb-4">
         <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
-          アクセス解析 & 流入元分析 <span className="text-xs text-slate-400 font-normal ml-2">※指定期間のログ集計値</span>
+          アクセス解析 & 流入元分析 <span className="text-xs text-slate-400 font-normal ml-2">※指定期間（受付ベース）の集計値</span>
         </h3>
       </div>
       
@@ -382,7 +496,7 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
 
         {/* 右側: 流入元 */}
         <div className="bg-slate-50 rounded-xl border border-slate-200 p-6 flex flex-col items-center">
-          <p className="text-center text-sm font-bold text-slate-600 mb-6">予約流入経路 (Source)</p>
+          <p className="text-center text-sm font-bold text-slate-600 mb-6">申込件数 流入経路 (Source)</p>
           <div className="flex-1 w-full min-h-[300px]">
             <Doughnut 
               data={{
@@ -394,6 +508,33 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
                 plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 20 } } }, 
                 cutout: '65%' 
               }} 
+              plugins={[{
+                id: 'customDatalabels',
+                afterDatasetsDraw(chart: any) {
+                  const { ctx, data } = chart;
+                  ctx.save();
+                  const meta = chart.getDatasetMeta(0);
+                  const total = data.datasets[0].data.reduce((a: number, b: number) => a + b, 0);
+                  if (total === 0) return;
+                  
+                  meta.data.forEach((element: any, index: number) => {
+                    const value = data.datasets[0].data[index];
+                    if (!value) return;
+                    const percentage = Math.round((value / total) * 100) + '%';
+                    
+                    const { x, y } = element.tooltipPosition();
+                    
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 12px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+                    ctx.shadowBlur = 4;
+                    ctx.fillText(percentage, x, y);
+                  });
+                  ctx.restore();
+                }
+              }]}
             />
           </div>
         </div>

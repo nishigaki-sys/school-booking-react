@@ -134,6 +134,9 @@ export const ContentModal: React.FC<Props> = ({ isOpen, onClose, onSave, initial
               className="w-full p-2 border border-slate-300 rounded text-sm disabled:bg-slate-100 focus:ring-2 focus:ring-blue-500 outline-none"
               placeholder="空欄の場合は自動生成"
             />
+            {!initialData && (
+              <p className="text-[10px] text-slate-400 mt-1">※指定したい場合のみ入力。作成後は変更できません。</p>
+            )}
           </div>
 
           <div>
@@ -141,7 +144,7 @@ export const ContentModal: React.FC<Props> = ({ isOpen, onClose, onSave, initial
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full p-2 border border-slate-300 rounded text-sm h-20 focus:ring-2 focus:ring-blue-500 outline-none"
+              className="w-full p-2 border border-slate-300 rounded text-sm h-24 focus:ring-2 focus:ring-blue-500 outline-none"
               placeholder="体験会の詳細な内容を記述してください"
             />
           </div>
@@ -170,13 +173,36 @@ export const ContentModal: React.FC<Props> = ({ isOpen, onClose, onSave, initial
             </div>
           </div>
 
+          {/* 追加: 注意事項 */}
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">注意事項</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full p-2 border border-slate-300 rounded text-sm h-20 focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="持ち物や注意事項など"
+            />
+          </div>
+
+          {/* 追加: バナー画像URL */}
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">バナー画像URL</label>
+            <input
+              type="text"
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+              className="w-full p-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="https://example.com/image.jpg"
+            />
+          </div>
+
           <div className="flex gap-2">
             <div className="flex-1">
               <label className="block text-xs font-bold text-slate-500 mb-1">種別</label>
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value)}
-                className="w-full p-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full p-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
               >
                 <option value="trial">体験会</option>
                 <option value="event">イベント</option>

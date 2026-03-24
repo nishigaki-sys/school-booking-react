@@ -5,14 +5,14 @@ import { useSchoolSettings } from '../features/admin/hooks/useSchoolSettings';
 import { BookingManagement } from './BookingManagement';
 import { DashboardStats } from '../features/admin/components/DashboardStats';
 import { CourseSettings } from '../features/admin/components/CourseSettings';
-import { ScheduleCalendar } from '../features/admin/components/ScheduleCalendar'; // ★ 追加
+import { ScheduleCalendar } from '../features/admin/components/ScheduleCalendar';
 import { doc, setDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
+import { signOut } from 'firebase/auth';
 import { SchoolSettingsForm } from '../features/admin/components/SchoolSettingsForm';
 import { InquiryManagement } from '../features/admin/components/InquiryManagement';
 import { UrlGenerator } from '../features/admin/components/UrlGenerator';
 
-// ★ TabType に 'calendar' を追加
 type TabType = 'dashboard' | 'calendar' | 'bookings' | 'inquiries' | 'courses' | 'url' | 'settings';
 
 export const AdminDashboard: React.FC = () => {
@@ -28,6 +28,13 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+
+  const handleLogout = async () => {
+    if (window.confirm("ログアウトしますか？")) {
+      await signOut(auth);
+      navigate('/admin');
+    }
+  };
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500 font-bold">データを読み込み中...</div>;
@@ -49,11 +56,39 @@ export const AdminDashboard: React.FC = () => {
             </span>
           </div>
           <div className="flex items-center gap-4">
+            {/* ログインユーザー情報の表示 */}
+            {user && (
+              <span className="text-xs font-bold text-slate-500 bg-slate-50 px-2 py-1 rounded border border-slate-100 hidden sm:inline-block">
+                {user.name}
+              </span>
+            )}
+            
+            {/* 予約ページ確認リンク */}
+            <a 
+              href={`/book/${schoolId}`} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-sm text-teal-600 hover:text-teal-800 hover:underline flex items-center gap-1 font-bold"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              予約ページ確認
+            </a>
+
             <button 
               onClick={() => navigate('/admin/schools')}
-              className="text-sm text-blue-600 hover:text-blue-800 font-bold transition-colors"
+              className="text-sm text-blue-600 hover:text-blue-800 font-bold transition-colors hover:underline hidden sm:block"
             >
-              ← 校舎選択へ戻る
+              校舎選択へ戻る
+            </button>
+
+            {/* ログアウトボタン */}
+            <button 
+              onClick={handleLogout}
+              className="text-sm font-bold text-red-500 hover:bg-red-50 px-3 py-1 rounded transition-colors"
+            >
+              ログアウト
             </button>
           </div>
         </div>
@@ -64,7 +99,7 @@ export const AdminDashboard: React.FC = () => {
         <div className="flex border-b border-slate-300 mb-6 bg-white rounded-t-xl overflow-x-auto no-scrollbar">
           {[
             { id: 'dashboard', label: 'ダッシュボード' },
-            { id: 'calendar', label: 'カレンダー' }, // ★ カレンダータブを追加
+            { id: 'calendar', label: 'カレンダー' },
             { id: 'bookings', label: '予約管理' },
             { id: 'inquiries', label: 'お問い合わせ' },
             { id: 'courses', label: '体験会設定' },
@@ -91,7 +126,6 @@ export const AdminDashboard: React.FC = () => {
              <DashboardStats schoolId={schoolId} settings={settings} />
           )}
 
-          {/* ★ カレンダーコンポーネントを呼び出し */}
           {activeTab === 'calendar' && schoolId && (
             <ScheduleCalendar schoolId={schoolId} settings={settings} />
           )}

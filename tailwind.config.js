@@ -6,6 +6,10 @@ export default {
   ],
   theme: {
     extend: {
+      // フォントファミリーのデフォルトを M PLUS Rounded 1c に変更
+      fontFamily: {
+        sans: ['"M PLUS Rounded 1c"', 'sans-serif'],
+      },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-out forwards',
       },

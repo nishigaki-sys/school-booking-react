@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useBookings } from '../../bookings/hooks/useBookings';
-import { useLogs } from '../../logs/hooks/useLogs';
+// useLogs のインポートを削除します
 import { Bar, Doughnut } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -42,9 +42,8 @@ function getColorForId(str: string) {
 
 export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
   const { bookings } = useBookings(schoolId);
-  // useLogsが存在しない、または空配列を返す場合の安全策としてデフォルトをフォールバックします
-  const logsData = useLogs ? useLogs(schoolId) : { logs: [] };
-  const logs = logsData.logs || [];
+  // ログ機能が未実装のため、空の配列を代入します
+  const logs: any[] = [];
 
   const [periodMode, setPeriodMode] = useState<'month' | 'custom'>('month');
   const [targetMonth, setTargetMonth] = useState(() => {
@@ -67,7 +66,6 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
   });
 
   // 現在適用されている集計期間
-  // デフォルトは「月間（当月）」のため、月初め〜月末にする
   const [appliedDate, setAppliedDate] = useState(() => {
     const now = new Date();
     return {
@@ -97,9 +95,7 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
     const datesInPeriod = getDateList(sDate, eDate);
 
     // 1. KPI & 期間指定集計
-    // 参加ベース（予約人数）
     const joinedBookings = bookings.filter(b => b.date >= sDate && b.date <= eDate);
-    // 受付ベース（申込件数）
     const createdBookings = bookings.filter(b => {
       if (!b.createdAt) return false;
       const d = b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt.seconds * 1000);
@@ -116,7 +112,6 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
     
     const periodRate = periodCapacity > 0 ? Math.round((joinedBookings.length / periodCapacity) * 100) : 0;
 
-    // 売上金額（参加ベースでの売上実績）
     let totalSales = 0;
     joinedBookings.forEach(b => {
       const content = settings?.contents?.find((c: any) => c.id === b.contentId);
@@ -175,7 +170,7 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
       contentStatsMap[cid].booking++;
     });
 
-    // 4. 下部表示用（流入元、ファネル）※申込件数（受付ベース）
+    // 4. 下部表示用（流入元、ファネル）
     const sourceCounts: any = {};
     createdBookings.forEach(b => {
       let label = b.sourceType === 'admin' ? '管理画面' : (b.utmSource || '直接/検索');
@@ -305,14 +300,13 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
 
       {/* 期間集計 ＆ 推移グラフ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 左側：定員と予約率（参加ベース） */}
+        {/* 左側：定員と予約率 */}
         <div className="lg:col-span-1 bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col">
           <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
             定員と予約率
           </h3>
 
-          {/* 充足率（ドーナツグラフ） */}
           <div className="flex-1 relative flex items-center justify-center min-h-[160px] mb-4">
             <Doughnut
               data={{
@@ -324,10 +318,10 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
                   ],
                   backgroundColor: ['#3b82f6', '#f1f5f9'],
                   borderWidth: 0,
-                }] // ← cutoutを削除
+                }]
               }}
               options={{
-                cutout: '75%', // ← optionsの中に追加
+                cutout: '75%',
                 maintainAspectRatio: false,
                 plugins: {
                   legend: { display: false },
@@ -412,7 +406,6 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
                 },
                 { 
                   label: '空き枠', 
-                  // 全体の高さが総枠数（capacity）になるように、空き枠を計算して積み上げる
                   data: stats.contentStats.map((s: any) => Math.max(0, s.capacity - s.booking)), 
                   backgroundColor: '#cbd5e1', 
                   barPercentage: 0.6 
@@ -505,8 +498,7 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
               }} 
               options={{ 
                 maintainAspectRatio: false, 
-                plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 20 } } }, 
-                cutout: '65%' 
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 20 } } } 
               }} 
               plugins={[{
                 id: 'customDatalabels',

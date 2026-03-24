@@ -5,9 +5,10 @@ import { signOut } from 'firebase/auth';
 import { db, auth, APP_ID } from '../../../lib/firebase';
 import { useAuth } from '../../../hooks/useAuth'; 
 import { useSchools } from '../hooks/useSchools';
+// Globe を削除しました
 import { 
   Trash2, Plus, School, LayoutDashboard, Users, 
-  Settings, X, ArrowRight, ShieldCheck, LogOut, Globe 
+  Settings, X, ArrowRight, ShieldCheck, LogOut 
 } from 'lucide-react';
 
 export const SchoolSelect: React.FC = () => {

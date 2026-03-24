@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { doc, deleteDoc, collection, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { useBookings, type Booking } from '../features/bookings/hooks/useBookings';
+import { useBookings } from '../features/bookings/hooks/useBookings'; // type Booking を削除しました
 import { useSchoolSettings } from '../features/admin/hooks/useSchoolSettings';
 import { BookingCalendar } from '../features/bookings/components/BookingCalendar';
 

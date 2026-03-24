@@ -18,13 +18,13 @@ export const BookingIndex: React.FC = () => {
   return (
     <div className="bg-slate-50 text-slate-800 min-h-screen pb-10">
       <nav className="bg-white text-slate-600 p-4 shadow-sm flex justify-center items-center z-50 relative">
-        <h1 className="text-xl font-extrabold text-teal-600">ロボット教室 体験予約</h1>
+        <h1 className="text-xl font-extrabold text-teal-600">ロボ団 ロボットプログラミング体験予約</h1>
       </nav>
 
       <div className="container mx-auto max-w-4xl p-4 sm:p-6 mt-4 animate-fade-in">
         <div className="text-center mb-10 mt-4">
           <h2 className="text-2xl font-bold text-slate-700 mb-2">ご希望の教室を選んでください</h2>
-          <p className="text-slate-500 text-sm">お近くの教室で体験会に参加しよう！</p>
+          <p className="text-slate-500 text-sm">お近くの教室をご選択ください</p>
         </div>
 
         {schools.length === 0 ? (

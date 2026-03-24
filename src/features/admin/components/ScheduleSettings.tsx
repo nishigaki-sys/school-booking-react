@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ScheduleModal } from './ScheduleModal'; // 次のステップで作成します
+import { ScheduleModal } from './ScheduleModal';
 
 interface Props {
   schoolId: string;
@@ -7,7 +7,8 @@ interface Props {
   onSaveSettings: (newSettings: any) => Promise<void>;
 }
 
-export const ScheduleSettings: React.FC<Props> = ({ schoolId, settings, onSaveSettings }) => {
+// 修正箇所: 引数の分割代入から未使用の `schoolId` を削除しました
+export const ScheduleSettings: React.FC<Props> = ({ settings, onSaveSettings }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
 
@@ -22,7 +23,7 @@ export const ScheduleSettings: React.FC<Props> = ({ schoolId, settings, onSaveSe
   const handlePrevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
   const handleNextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
 
-  // イベントの色を決定する簡易関数（元の admin.js の getEventColorClass に相当）
+  // イベントの色を決定する簡易関数
   const getEventColorClass = (grades: string[] = []) => {
     if (grades.includes('all_grades')) return "bg-green-500 text-white";
     if (grades.some(g => g.startsWith('preschool'))) return "bg-pink-400 text-white";

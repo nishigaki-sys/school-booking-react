@@ -324,10 +324,10 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
                   ],
                   backgroundColor: ['#3b82f6', '#f1f5f9'],
                   borderWidth: 0,
-                  cutout: '75%'
-                }]
+                }] // ← cutoutを削除
               }}
               options={{
+                cutout: '75%', // ← optionsの中に追加
                 maintainAspectRatio: false,
                 plugins: {
                   legend: { display: false },

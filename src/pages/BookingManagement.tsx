@@ -116,12 +116,14 @@ export const BookingManagement: React.FC<Props> = ({ schoolId }) => {
         startTime: selectedSlot.startTime,
         contentId: selectedSlot.content.id,
         courseName: selectedSlot.content.name,
+        price: selectedSlot.content.price, // ★これを追加
+        type: selectedSlot.content.type,   // ★これを追加
         parentName: parentName || '管理者代理登録',
         childName,
         email: email || '',
         phone: phone || '',
         grade: selectedGrade,
-        sourceType: 'admin', // 管理画面からの登録フラグ
+        sourceType: 'admin',// 管理画面からの登録フラグ
         utmSource: sourceType || '直接/店頭', // ドロップダウンで選択した値
         createdAt: serverTimestamp()
       });

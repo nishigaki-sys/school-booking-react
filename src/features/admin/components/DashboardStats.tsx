@@ -114,8 +114,13 @@ export const DashboardStats: React.FC<Props> = ({ schoolId, settings }) => {
 
     let totalSales = 0;
     joinedBookings.forEach(b => {
-      const content = settings?.contents?.find((c: any) => c.id === b.contentId);
-      if (content) totalSales += Number(content.price || 0);
+      // ★以下のように if ~ else に変更します
+      if (b.price !== undefined) {
+        totalSales += Number(b.price);
+      } else {
+        const content = settings?.contents?.find((c: any) => c.id === b.contentId);
+        if (content) totalSales += Number(content.price || 0);
+      }
     });
 
     // 2. 予約実績推移

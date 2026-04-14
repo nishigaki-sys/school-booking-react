@@ -12,6 +12,8 @@ export interface Booking {
   startTime: string;
   contentId: string;
   courseName: string;
+  price?: number; // ★追加
+  type?: string;  // ★追加
   parentName: string;
   childName: string;
   email: string;

@@ -115,6 +115,8 @@ export const BookingFlow: React.FC = () => {
         startTime: selectedSlot.startTime,
         contentId: selectedSlot.content.id,
         courseName: selectedSlot.content.name,
+        price: selectedSlot.content.price, // ★これを追加
+        type: selectedSlot.content.type,   // ★これを追加
         parentName,
         childName,
         email,

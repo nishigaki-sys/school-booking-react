@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { doc, deleteDoc, collection, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { useBookings } from '../features/bookings/hooks/useBookings'; // type Booking を削除しました
+import { useBookings } from '../features/bookings/hooks/useBookings';
 import { useSchoolSettings } from '../features/admin/hooks/useSchoolSettings';
 import { BookingCalendar } from '../features/bookings/components/BookingCalendar';
 
@@ -71,6 +71,39 @@ export const BookingManagement: React.FC<Props> = ({ schoolId }) => {
   const [sourceType, setSourceType] = useState(''); // 流入経路
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // === フィルタ用のState ===
+  const [filterMonth, setFilterMonth] = useState('');
+  const [filterContent, setFilterContent] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [filterName, setFilterName] = useState('');
+
+  // 予約データをフィルタリングする処理
+  const filteredBookings = bookings.filter(b => {
+    // 開催月フィルタ (b.date: 'YYYY-MM-DD')
+    if (filterMonth && !b.date.startsWith(filterMonth)) return false;
+    // コンテンツフィルタ
+    if (filterContent && b.courseName !== filterContent) return false;
+    
+    // 種別フィルタ（過去のデータで type がない場合は settings から探す）
+    if (filterType) {
+      let actualType = b.type;
+      if (!actualType) {
+        const content = settings?.contents?.find((c: any) => c.id === b.contentId);
+        actualType = content?.type || 'trial';
+      }
+      if (actualType !== filterType) return false;
+    }
+
+    // 顧客名フィルタ (お子様名・保護者名の部分一致)
+    if (filterName) {
+      const target = filterName.toLowerCase();
+      const childMatch = b.childName.toLowerCase().includes(target);
+      const parentMatch = (b.parentName || '').toLowerCase().includes(target);
+      if (!childMatch && !parentMatch) return false;
+    }
+    return true;
+  });
+
   // 予約キャンセルの処理
   const handleCancel = async (bookingId: string) => {
     if (!window.confirm("本当にこの予約をキャンセル（削除）しますか？\nこの操作は取り消せません。")) return;
@@ -116,15 +149,15 @@ export const BookingManagement: React.FC<Props> = ({ schoolId }) => {
         startTime: selectedSlot.startTime,
         contentId: selectedSlot.content.id,
         courseName: selectedSlot.content.name,
-        price: selectedSlot.content.price, // ★これを追加
-        type: selectedSlot.content.type,   // ★これを追加
+        price: selectedSlot.content.price, // 種別と金額の記録を追加
+        type: selectedSlot.content.type,
         parentName: parentName || '管理者代理登録',
         childName,
         email: email || '',
         phone: phone || '',
         grade: selectedGrade,
-        sourceType: 'admin',// 管理画面からの登録フラグ
-        utmSource: sourceType || '直接/店頭', // ドロップダウンで選択した値
+        sourceType: 'admin', 
+        utmSource: sourceType || '直接/店頭', 
         createdAt: serverTimestamp()
       });
 
@@ -173,6 +206,65 @@ export const BookingManagement: React.FC<Props> = ({ schoolId }) => {
         </button>
       </div>
 
+      {/* フィルタ用UI */}
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6 flex flex-wrap gap-4 items-end">
+        <div>
+          <label className="block text-xs font-bold text-slate-500 mb-1">開催月</label>
+          <input 
+            type="month" 
+            value={filterMonth} 
+            onChange={e => setFilterMonth(e.target.value)} 
+            className="p-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 mb-1">コンテンツ</label>
+          <select 
+            value={filterContent} 
+            onChange={e => setFilterContent(e.target.value)}
+            className="p-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-teal-500 outline-none bg-white"
+          >
+            <option value="">すべて</option>
+            {settings?.contents?.map((c: any) => (
+              <option key={c.id} value={c.name}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 mb-1">種別</label>
+          <select 
+            value={filterType} 
+            onChange={e => setFilterType(e.target.value)}
+            className="p-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-teal-500 outline-none bg-white"
+          >
+            <option value="">すべて</option>
+            <option value="trial">体験会</option>
+            <option value="event">イベント</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 mb-1">顧客名</label>
+          <input 
+            type="text" 
+            value={filterName} 
+            onChange={e => setFilterName(e.target.value)} 
+            placeholder="名前で検索..."
+            className="p-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-teal-500 outline-none w-40"
+          />
+        </div>
+        <button 
+          onClick={() => {
+            setFilterMonth('');
+            setFilterContent('');
+            setFilterType('');
+            setFilterName('');
+          }}
+          className="text-xs text-slate-500 hover:text-slate-700 underline font-bold px-2 py-2"
+        >
+          クリア
+        </button>
+      </div>
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm text-left text-slate-600">
           <thead className="bg-slate-50 text-xs uppercase font-bold text-slate-500 border-b">
@@ -185,55 +277,68 @@ export const BookingManagement: React.FC<Props> = ({ schoolId }) => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {bookings.length === 0 ? (
+            {filteredBookings.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-6 py-8 text-center text-slate-400">
-                  予約データがありません。
+                  条件に一致する予約データがありません。
                 </td>
               </tr>
             ) : (
-              bookings.map((booking) => (
-                <tr key={booking.id} className="hover:bg-slate-50">
-                  <td className="px-6 py-4">
-                    {booking.bookingId && (
-                      <div className="text-[10px] text-slate-400 font-mono mb-1">ID: {booking.bookingId}</div>
-                    )}
-                    <div>{booking.date} {booking.startTime}</div>
-                    <div className="text-xs text-slate-500 mt-1">{booking.childName} 様</div>
-                  </td>
-                  <td className="px-6 py-4">{booking.courseName}</td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">確定</span>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    {booking.sourceType === 'admin' ? (
-                      <>
-                        <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs border border-gray-200">管理画面</span>
-                        {booking.utmSource && <div className="text-[10px] text-slate-400 mt-1">{booking.utmSource}</div>}
-                      </>
-                    ) : booking.utmSource ? (
-                      <>
-                        <span className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded text-xs border border-indigo-100 block w-fit mx-auto mb-1">
-                          {booking.utmSource}
-                        </span>
-                        {booking.utmMedium && <span className="text-[10px] text-slate-400">{booking.utmMedium}</span>}
-                      </>
-                    ) : (
-                      <span className="text-xs text-slate-400">Web予約</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <div className="flex flex-col gap-2">
-                      <button 
-                        onClick={() => handleCancel(booking.id)}
-                        className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded border border-red-200 hover:bg-red-100 font-bold transition"
-                      >
-                        キャンセル
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+              filteredBookings.map((booking) => {
+                // 過去のデータ用に種別を補完
+                let displayType = booking.type;
+                if (!displayType) {
+                  const content = settings?.contents?.find((c: any) => c.id === booking.contentId);
+                  displayType = content?.type || 'trial';
+                }
+
+                return (
+                  <tr key={booking.id} className="hover:bg-slate-50">
+                    <td className="px-6 py-4">
+                      {booking.bookingId && (
+                        <div className="text-[10px] text-slate-400 font-mono mb-1">ID: {booking.bookingId}</div>
+                      )}
+                      <div>{booking.date} {booking.startTime}</div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        {booking.childName} 様 <span className="text-[10px] ml-1">(保護者: {booking.parentName})</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">{booking.courseName}</td>
+                    <td className="px-6 py-4 text-center">
+                      <span className="bg-blue-50 text-blue-600 px-2 py-1 rounded text-xs font-bold border border-blue-200">
+                        {displayType === 'event' ? 'イベント' : '体験会'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      {booking.sourceType === 'admin' ? (
+                        <>
+                          <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs border border-gray-200">管理画面</span>
+                          {booking.utmSource && <div className="text-[10px] text-slate-400 mt-1">{booking.utmSource}</div>}
+                        </>
+                      ) : booking.utmSource ? (
+                        <>
+                          <span className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded text-xs border border-indigo-100 block w-fit mx-auto mb-1">
+                            {booking.utmSource}
+                          </span>
+                          {booking.utmMedium && <span className="text-[10px] text-slate-400">{booking.utmMedium}</span>}
+                        </>
+                      ) : (
+                        <span className="text-xs text-slate-400">Web予約</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex flex-col gap-2">
+                        <button 
+                          onClick={() => handleCancel(booking.id)}
+                          className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded border border-red-200 hover:bg-red-100 font-bold transition"
+                        >
+                          キャンセル
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
